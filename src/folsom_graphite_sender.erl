@@ -51,7 +51,7 @@ init([GraphiteHost, GraphitePort]) ->
     {ok, State}.
 
 handle_call(Request, _From, State) ->
-    lager:info("Unepected message: handle_call ~p", [Request]),
+    lager:info("Unexpected message: handle_call ~p", [Request]),
     {noreply, ok, State}.
 
 handle_cast({send, Message}, #state{socket = Socket} = State) ->
@@ -63,11 +63,11 @@ handle_cast({send, Message}, #state{socket = Socket} = State) ->
             {stop, {shutdown, socket_closed}, State}
     end;
 handle_cast(Msg, State) ->
-    lager:info("Unepected message: handle_cast ~p", [Msg]),
+    lager:info("Unexpected message: handle_cast ~p", [Msg]),
     {noreply, State}.
 
 handle_info(Info, State) ->
-    lager:info("Unepected message: handle_info ~p", [Info]),
+    lager:info("Unexpected message: handle_info ~p", [Info]),
     {noreply, State}.
 
 terminate(_Reason, #state{socket = Socket}) ->

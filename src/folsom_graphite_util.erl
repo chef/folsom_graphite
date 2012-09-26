@@ -13,6 +13,9 @@
          to_list/1
   ]).
 
+%% the various types from folsom key/values
+-type folsom_type() :: atom() | list() | binary() | integer() | float().
+
 -ifdef(TEST).
 -compile([export_all]).
 -endif.
@@ -33,7 +36,12 @@ do_substitution(Str, From, To) when is_binary(Str) ->
 do_substitution(Str, From, To) ->
     string:join(string:tokens(Str, From), To).
 
-%% Convert a metric into a line suitable for graphite.
+
+-spec graphite_format(Prefix :: string(),
+                      Hostname :: string(),
+                      {Key :: folsom_type(), Value :: folsom_type()},
+                      Timestamp :: non_neg_integer()) -> list().
+        %% Convert a metric into a line suitable for graphite.
 %%
 %% We use the mappings defined in codahales metrics GraphiteReporter
 %% (http://bit.ly/UFprFV)
@@ -54,16 +62,17 @@ concat([H], Acc) -> concat([], [H | Acc]);
 concat([H|T], Acc) ->
     concat(T, [" " | [ H | Acc]]).
 
+-spec to_list(folsom_type()) -> list().
 %% Helper to convert arbitrary types we see in folsom metric
 %% values into list().
 to_list(V) when is_list(V) ->
     V;
+to_list(V) when is_atom(V) ->
+    atom_to_list(V);
 to_list(V) when is_binary(V) ->
     binary_to_list(V);
 to_list(V) when is_float(V) ->
     io_lib:format("~w", [V]);
-to_list(V) when is_atom(V) ->
-    atom_to_list(V);
 to_list(V) when is_integer(V) ->
     integer_to_list(V).
 
