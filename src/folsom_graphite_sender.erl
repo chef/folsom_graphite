@@ -44,12 +44,16 @@ send(Message) ->
 %% ------------------------------------------------------------------
 
 init([GraphiteHost, GraphitePort]) ->
-    {ok, Socket} = gen_tcp:connect(GraphiteHost, GraphitePort,
-                                   [binary, {active, false}],
-                                   ?CONNECT_TIMEOUT),
-    State = #state{socket = Socket},
-    {ok, State}.
-
+    case gen_tcp:connect(GraphiteHost, GraphitePort,
+                         [binary, {active, false}],
+                         ?CONNECT_TIMEOUT) of
+        {ok, Socket} ->
+            State = #state{socket = Socket},
+            {ok, State};
+        {error, Reason} ->
+            Message = lists:flatten(io_lib:format("Could not connect to graphite server on ~s:~B (~w)", [GraphiteHost, GraphitePort, Reason])),
+            {stop, Message}
+    end.
 handle_call(Request, _From, State) ->
     lager:info("Unexpected message: handle_call ~p", [Request]),
     {noreply, ok, State}.
