@@ -24,8 +24,5 @@
                   stdlib,
                   folsom
                  ]},
-  {mod, {folsom_graphite_app, []}},
-  {env, [{graphite_host, 'localhost'},
-         {graphite_port, 2003},
-         {send_interval, 15000}]}
+  {mod, {folsom_graphite_app, []}}
  ]}.

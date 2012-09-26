@@ -34,7 +34,7 @@
 %% ------------------------------------------------------------------
 
 start_link(GraphiteHost, GraphitePort) ->
-    gen_server:start_link(?MODULE, [GraphiteHost, GraphitePort], []).
+    gen_server:start_link({local, ?MODULE}, ?MODULE, [GraphiteHost, GraphitePort], []).
 
 send(Message) ->
     gen_server:cast(?MODULE, {send, Message}).
@@ -44,7 +44,9 @@ send(Message) ->
 %% ------------------------------------------------------------------
 
 init([GraphiteHost, GraphitePort]) ->
-    {ok, Socket} = gen_tcp:connect(GraphiteHost, GraphitePort, [], ?CONNECT_TIMEOUT),
+    {ok, Socket} = gen_tcp:connect(GraphiteHost, GraphitePort,
+                                   [binary, {active, false}],
+                                   ?CONNECT_TIMEOUT),
     State = #state{socket = Socket},
     {ok, State}.
 

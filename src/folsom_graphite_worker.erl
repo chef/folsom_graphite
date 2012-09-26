@@ -6,13 +6,31 @@
 
 -behaviour(gen_server).
 
--record(state, {send_interval :: integer()
+-include_lib("eunit/include/eunit.hrl").
+
+-record(state, {send_interval :: integer(),
+                prefix :: string(),
+                hostname = "localhost" :: string()
                }).
+
+-define(METER_FIELDS, [{count, "count"},
+                       {one, "1MinuteRate"},
+                       {five, "5MinuteRate"},
+                       {fifteen, "15MinuteRate"},
+                       {mean, "meanRate"}]).
+-define(HISTOGRAM_FIELDS, [{min, "min"},
+                           {max, "max"},
+                           {arithmetic_mean, "mean"},
+                           {standard_deviation, "stddev"}]).
+-define(PERCENTILE_FIELDS, [{75, "75percentile"},
+                            {95, "95percentile"},
+                            {99, "99percentile"},
+                            {999, "999percentile"}]).
 %% ------------------------------------------------------------------
 %% API Function Exports
 %% ------------------------------------------------------------------
 
--export([start_link/1
+-export([start_link/2
         ]).
 
 %% ------------------------------------------------------------------
@@ -30,15 +48,17 @@
 %% API Function Definitions
 %% ------------------------------------------------------------------
 
-start_link(SendInterval) ->
-    gen_server:start_link(?MODULE, [SendInterval], []).
+start_link(Prefix, SendInterval) ->
+    gen_server:start_link(?MODULE, [Prefix, SendInterval], []).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 
-init([SendInterval]) ->
-    State = #state{send_interval = SendInterval},
+init([Prefix, SendInterval]) ->
+    State = #state{send_interval = SendInterval,
+                   prefix = folsom_graphite_util:sanitize(Prefix),
+                   hostname = folsom_graphite_util:sanitize(hostname())},
     timer:send_after(SendInterval, publish),
     {ok, State}.
 
@@ -50,9 +70,7 @@ handle_cast(Msg, State) ->
     lager:info("Unepected message: handle_cast ~p", [Msg]),
     {noreply, State}.
 
-handle_info({timeout, _, publish},
-            #state{send_interval = SendInterval} = State) ->
-    lager:info("Publishing to Graphite"),
+handle_info(publish, #state{send_interval = SendInterval} = State) ->
     ok = publish_to_graphite(State),
     timer:send_after(SendInterval, publish),
     {noreply, State};
@@ -70,5 +88,47 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
-publish_to_graphite(State) ->
+-spec hostname() -> string().
+hostname() ->
+    {ok, Hostname} = inet:gethostname(),
+    Hostname.
+
+-spec publish_to_graphite(#state{}) -> ok.
+publish_to_graphite(#state{prefix = Prefix,
+                           hostname = Hostname}) ->
+    Timestamp = make_timestamp(),
+    MetricsInfo = folsom_metrics:get_metrics_info(),
+    Metrics = [ extract_value(Metric) || Metric <- MetricsInfo],
+    Lines = [ folsom_graphite_util:graphite_format(Prefix, Hostname, Metric, Timestamp) || Metric <- lists:flatten(Metrics)],
+    folsom_graphite_sender:send(Lines),
     ok.
+
+extract_value({Name, [{type, histogram}]}) ->
+    Values = folsom_metrics:get_histogram_statistics(Name),
+    Result = extract_value(Name, Values, ?HISTOGRAM_FIELDS),
+    Percentiles = proplists:get_value(percentile, Values),
+    extract_value(Name, Percentiles, ?PERCENTILE_FIELDS, Result);
+extract_value({Name, [{type, gauge}]}) ->
+    Value = folsom_metrics:get_metric_value(Name),
+    [{io_lib:format("~s.value", [Name]), Value}];
+extract_value({Name, [{type, meter}]}) ->
+    Values = folsom_metrics:get_metric_value(Name),
+    extract_value(Name, Values, ?METER_FIELDS);
+extract_value({Name, [{type, counter}]}) ->
+    Value = folsom_metrics:get_metric_value(Name),
+    {io_lib:format("~s.count", [Name]), Value}.
+
+extract_value(Name, Values, Fields) ->
+    extract_value(Name, Values, Fields, []).
+extract_value(Name, Values, Fields, StartAcc) ->
+    lists:foldl(fun({MetricName, PrettyName}, Acc) ->
+                    V = proplists:get_value(MetricName, Values),
+                    [{io_lib:format("~s.~s",[Name, PrettyName]), V} | Acc]
+                end,
+                StartAcc,
+                Fields).
+
+-spec make_timestamp() -> non_neg_integer().
+make_timestamp() ->
+    {MegaSecs, Secs, _Microsecs} = os:timestamp(),
+    MegaSecs*1000000 + Secs.
