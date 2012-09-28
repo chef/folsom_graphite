@@ -9,9 +9,9 @@
 
 -export([sanitize/1,
          remove_spaces/1,
-         graphite_format/4,
+         graphite_format/3,
          to_list/1
-  ]).
+        ]).
 
 %% the various types from folsom key/values
 -type folsom_type() :: atom() | list() | binary() | integer() | float().
@@ -38,17 +38,16 @@ do_substitution(Str, From, To) ->
 
 
 -spec graphite_format(Prefix :: string(),
-                      Hostname :: string(),
                       {Key :: folsom_type(), Value :: folsom_type()},
                       Timestamp :: non_neg_integer()) -> list().
-        %% Convert a metric into a line suitable for graphite.
+%% Convert a metric into a line suitable for graphite.
 %%
 %% We use the mappings defined in codahales metrics GraphiteReporter
 %% (http://bit.ly/UFprFV)
 %%
 %% Returns an iolist
-graphite_format(Prefix, Hostname, {Key, Value}, Timestamp) ->
-    MetricName = string:join([Prefix, Hostname, to_list(Key)], "."),
+graphite_format(Prefix, {Key, Value}, Timestamp) ->
+    MetricName = string:join([Prefix, to_list(Key)], "."),
     concat([remove_spaces(MetricName),
             to_list(Value),
             integer_to_list(Timestamp)]).
