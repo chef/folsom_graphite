@@ -36,7 +36,7 @@ init([]) ->
     GraphitePort = get_env(graphite_port, 2003),
     Prefix = get_env(prefix, "folsom"),
     Application = get_env(application, undefined),
-    SendInterval = get_env(send_interval, 15000),
+    SendInterval = get_env(send_interval, 10000),
     lager:debug("Prefix ~w", [Prefix]),
     {ok, {{one_for_one, 10, 3600},
           [?WORKER(folsom_graphite_sender, [GraphiteHost, GraphitePort]),
