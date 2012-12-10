@@ -38,19 +38,23 @@ do_substitution(Str, From, To) ->
 
 
 -spec graphite_format(Prefix :: string(),
-                      {Key :: folsom_type(), Value :: folsom_type()},
-                      Timestamp :: non_neg_integer()) -> list().
+                      Timestamp :: non_neg_integer(),
+                      {Key :: folsom_type(), Value :: folsom_type()}) -> list().
 %% Convert a metric into a line suitable for graphite.
 %%
 %% We use the mappings defined in codahales metrics GraphiteReporter
 %% (http://bit.ly/UFprFV)
 %%
 %% Returns an iolist
-graphite_format(Prefix, {Key, Value}, Timestamp) ->
+graphite_format(Prefix, Timestamp, {Key, Value}) when is_number(Timestamp) ->
+    graphite_format(Prefix, {Key, Value}, integer_to_list(Timestamp));
+graphite_format(Prefix, Timestamp, {Key, Value}) when is_list(Timestamp) ->
     MetricName = string:join([Prefix, to_list(Key)], "."),
     concat([remove_spaces(MetricName),
             to_list(Value),
-            integer_to_list(Timestamp)]).
+            Timestamp]).
+
+
 
 %% join up the elements of the graphite output line, separated
 %% by spaces and suffixed by a newline

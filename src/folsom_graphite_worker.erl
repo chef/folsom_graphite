@@ -95,41 +95,37 @@ hostname() ->
 -spec publish_to_graphite(#state{}) -> ok.
 publish_to_graphite(#state{prefix = Prefix}) ->
     Timestamp = make_timestamp(),
-    MetricsInfo = folsom_metrics:get_metrics_info(),
-    Metrics = [ extract_value(Metric) || Metric <- MetricsInfo],
-    Lines = [ folsom_graphite_util:graphite_format(Prefix, Metric, Timestamp) || Metric <- lists:flatten(Metrics)],
+    {_, _, Lines} = lists:foldl(fun extract_value/2, {Prefix, Timestamp, []}, folsom_metrics:get_metrics_info()),
     folsom_graphite_sender:send(Lines),
     ok.
 
-extract_value({Name, [{type, histogram}]}) ->
+extract_value({Name, [{type, histogram}]}, {Prefix, Timestamp, Acc}) ->
     Values = folsom_metrics:get_histogram_statistics(Name),
-    Result = extract_values(Name, Values, ?HISTOGRAM_FIELDS),
+    {_, _, Acc1} = extract_values(Name, Values, ?HISTOGRAM_FIELDS, {Prefix, Timestamp, Acc}),
     Percentiles = proplists:get_value(percentile, Values),
-    extract_values(Name, Percentiles, ?PERCENTILE_FIELDS, Result);
-extract_value({Name, [{type, gauge}]}) ->
+    extract_values(Name, Percentiles, ?PERCENTILE_FIELDS, {Prefix, Timestamp, Acc1});
+extract_value({Name, [{type, gauge}]}, {Prefix, Timestamp, Acc}) ->
     Value = folsom_metrics:get_metric_value(Name),
-    [{io_lib:format("~s.value", [Name]), Value}];
-extract_value({Name, [{type, meter}]}) ->
+    {Prefix, Timestamp, [folsom_graphite_util:graphite_format(Prefix, Timestamp, {io_lib:format("~s.value", [Name]), Value})|Acc]};
+extract_value({Name, [{type, meter}]}, {Prefix, Timestamp, Acc}) ->
     Values = folsom_metrics:get_metric_value(Name),
-    extract_values(Name, Values, ?METER_FIELDS);
-extract_value({Name, [{type, counter}]}) ->
+    extract_values(Name, Values, ?METER_FIELDS, {Prefix, Timestamp, Acc});
+extract_value({Name, [{type, counter}]}, {Prefix, Timestamp, Acc}) ->
     Value = folsom_metrics:get_metric_value(Name),
-    {io_lib:format("~s.count", [Name]), Value}.
+    {Prefix, Timestamp, [folsom_graphite_util:graphite_format(Prefix, Timestamp, {io_lib:format("~s.count", [Name]), Value})|Acc]}.
 
-extract_values(Name, Values, Fields) ->
-    extract_values(Name, Values, Fields, []).
-extract_values(Name, Values, Fields, StartAcc) ->
-    lists:foldl(fun({MetricName, PrettyName}, Acc) ->
-                    V = proplists:get_value(MetricName, Values),
-                    [{io_lib:format("~s.~s",[Name, PrettyName]), V} | Acc]
-                end,
-                StartAcc,
-                Fields).
+extract_values(Name, Values, Fields, {Prefix, Timestamp, StartAcc}) ->
+    {Prefix, Timestamp, lists:foldl(fun({MetricName, PrettyName}, Acc) ->
+                                            V = proplists:get_value(MetricName, Values),
+                                            [folsom_graphite_util:graphite_format(Prefix, Timestamp, {io_lib:format("~s.~s",[Name, PrettyName]), V})| Acc]
+                                    end,
+                                    StartAcc,
+                                    Fields)}.
 
 -spec make_timestamp() -> non_neg_integer().
 make_timestamp() ->
     {MegaSecs, Secs, _Microsecs} = os:timestamp(),
-    MegaSecs*1000000 + Secs.
+    integer_to_list(MegaSecs*1000000 + Secs).
 
 -spec append_hostname(Prefix :: string()) -> string().
 append_hostname(Prefix) ->
