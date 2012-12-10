@@ -46,11 +46,15 @@ do_substitution(Str, From, To) ->
 %% (http://bit.ly/UFprFV)
 %%
 %% Returns an iolist
-graphite_format(Prefix, {Key, Value}, Timestamp) ->
+graphite_format(Prefix, {Key, Value}, Timestamp) when is_number(Timestamp) ->
+    graphite_format(Prefix, {Key, Value}, integer_to_list(Timestamp));
+graphite_format(Prefix, {Key, Value}, Timestamp) when is_list(Timestamp) ->
     MetricName = string:join([Prefix, to_list(Key)], "."),
     concat([remove_spaces(MetricName),
             to_list(Value),
-            integer_to_list(Timestamp)]).
+            Timestamp]).
+
+
 
 %% join up the elements of the graphite output line, separated
 %% by spaces and suffixed by a newline
