@@ -37,7 +37,7 @@ start_link(GraphiteHost, GraphitePort) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [GraphiteHost, GraphitePort], []).
 
 send(Message) ->
-    gen_server:cast(?MODULE, {send, Message}).
+    gen_server:call(?MODULE, {send, Message}).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -45,27 +45,35 @@ send(Message) ->
 
 init([GraphiteHost, GraphitePort]) ->
     case gen_tcp:connect(GraphiteHost, GraphitePort,
-                         [binary, {active, false}],
-                         ?CONNECT_TIMEOUT) of
+                         [binary, raw, {active, false},
+                          {keepalive, true}, {nodelay, true},
+                          {send_timeout, 2000}], ?CONNECT_TIMEOUT) of
         {ok, Socket} ->
             State = #state{socket = Socket},
             {ok, State};
         {error, Reason} ->
-            Message = lists:flatten(io_lib:format("Could not connect to graphite server on ~s:~B (~w)", [GraphiteHost, GraphitePort, Reason])),
-            {stop, Message}
+            lager:error("Failed to connect to graphite server on ~s:~B: ~p~n", [GraphiteHost, GraphitePort, Reason]),
+            {stop, {error, failed_connect}}
     end.
+handle_call({send, Message}, _From, #state{socket = Socket} = State) ->
+    case gen_tcp:send(Socket, Message) of
+        ok ->
+            {reply, ok, State};
+        {error, Reason} ->
+            case Reason of
+                timeout ->
+                    lager:error("Timed out sending metrics to graphite.");
+                closed ->
+                    lager:error("Socket disconnected unexpectedly.");
+                Reason ->
+                    lager:error("Unexpected error occurred while sending data to graphite: ~p~n", [Reason])
+            end,
+            {stop, {shutdown, send_error}, State}
+    end;
 handle_call(Request, _From, State) ->
     lager:info("Unexpected message: handle_call ~p", [Request]),
     {noreply, ok, State}.
 
-handle_cast({send, Message}, #state{socket = Socket} = State) ->
-    case gen_tcp:send(Socket, Message) of
-        ok ->
-            {noreply, State};
-        {error, closed} ->
-            lager:info("Socket disconnected unexpectedly."),
-            {stop, {shutdown, socket_closed}, State}
-    end;
 handle_cast(Msg, State) ->
     lager:info("Unexpected message: handle_cast ~p", [Msg]),
     {noreply, State}.
