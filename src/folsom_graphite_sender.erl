@@ -45,7 +45,7 @@ send(Message) ->
 
 init([GraphiteHost, GraphitePort]) ->
     case gen_tcp:connect(GraphiteHost, GraphitePort,
-                         [binary, raw, {active, false},
+                         [binary, {packet, raw}, {active, false},
                           {keepalive, true}, {nodelay, true},
                           {send_timeout, 2000}], ?CONNECT_TIMEOUT) of
         {ok, Socket} ->
