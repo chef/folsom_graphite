@@ -10,7 +10,7 @@
 
 -record(state, {send_interval :: integer(),
                 prefix :: string(),
-                reset_metrics :: atom()
+                reset_metrics :: true | false
                }).
 
 -define(METER_FIELDS, [{count, "count"},
@@ -30,7 +30,7 @@
 %% API Function Exports
 %% ------------------------------------------------------------------
 
--export([start_link/4
+-export([start_link/1
         ]).
 
 %% ------------------------------------------------------------------
@@ -48,17 +48,18 @@
 %% API Function Definitions
 %% ------------------------------------------------------------------
 
-start_link(Prefix, Application, SendInterval, ResetMetrics) ->
-    gen_server:start_link(?MODULE, [Prefix, Application, SendInterval, ResetMetrics], []).
+start_link(Config) ->
+    gen_server:start_link(?MODULE, Config, []).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 
-init([Prefix, Application, SendInterval, ResetMetrics]) ->
+init(Config) ->
+    SendInterval = proplists:get_value(send_interval, Config),
     State = #state{send_interval = SendInterval,
-                   prefix = prefix(Prefix, Application),
-                   reset_metrics = ResetMetrics
+                   prefix = prefix(Config),
+                   reset_metrics = proplists:get_value(reset_metrics, Config)
                    },
     timer:send_after(SendInterval, publish),
     {ok, State}.
@@ -150,11 +151,22 @@ make_timestamp() ->
 append_hostname(Prefix) ->
     string:join([Prefix, hostname()], ".").
 
+prefix(Config) ->
+    prefix(proplists:get_value(prefix, Config),
+           proplists:get_value(application, Config),
+           proplists:get_value(append_hostname, Config)).
+
 -spec prefix(Prefix :: string(),
-             Application :: string() | undefined) -> string().
-prefix(Prefix, undefined) ->
+             Application :: string() | undefined,
+             AppendHostname :: true | false) -> string().
+prefix(Prefix, undefined, false) ->
+    folsom_graphite_util:sanitize(Prefix);
+prefix(Prefix, Application, false) ->
+    string:join([folsom_graphite_util:sanitize(Prefix),
+                 folsom_graphite_util:sanitize(Application)],".");
+prefix(Prefix, undefined, true) ->
     append_hostname(folsom_graphite_util:sanitize(Prefix));
-prefix(Prefix, Application) ->
+prefix(Prefix, Application, true) ->
     append_hostname(string:join([folsom_graphite_util:sanitize(Prefix),
                                  folsom_graphite_util:sanitize(Application)],".")).
 

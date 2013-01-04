@@ -34,14 +34,16 @@ start_link() ->
 init([]) ->
     GraphiteHost = get_env(graphite_host, "localhost"),
     GraphitePort = get_env(graphite_port, 2003),
-    Prefix = get_env(prefix, "folsom"),
-    Application = get_env(application, undefined),
-    SendInterval = get_env(send_interval, 10000),
-    ResetMetrics = get_env(reset_metrics, false),
-    lager:debug("Prefix ~w", [Prefix]),
+    WorkerConfig = [{prefix, get_env(prefix, "folsom")},
+                    {application, get_env(application, undefined)},
+                    {send_interval, get_env(send_interval, 10000)},
+                    {reset_metrics, get_env(reset_metrics, false)},
+                    {append_hostname, get_env(append_hostname, true)}
+                    ],
+    lager:debug("Prefix ~w", [get_env(prefix, "folsom")]),
     {ok, {{one_for_one, 10, 3600},
           [?WORKER(folsom_graphite_sender, [GraphiteHost, GraphitePort]),
-           ?WORKER(folsom_graphite_worker, [Prefix, Application, SendInterval, ResetMetrics])]
+           ?WORKER(folsom_graphite_worker, [WorkerConfig])]
          }}.
 
 get_env(Key, Default) ->
