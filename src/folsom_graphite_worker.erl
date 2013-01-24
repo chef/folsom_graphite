@@ -7,9 +7,14 @@
 -behaviour(gen_server).
 
 -include_lib("eunit/include/eunit.hrl").
+-ifdef(TEST).
+-compile([export_all]).
+-endif.
 
 -record(state, {send_interval :: integer(),
-                prefix :: string()
+                prefix :: string(),
+                reset_metrics :: true | false,
+                extract_fold_fun :: function()
                }).
 
 -define(METER_FIELDS, [{count, "count"},
@@ -29,7 +34,7 @@
 %% API Function Exports
 %% ------------------------------------------------------------------
 
--export([start_link/3
+-export([start_link/1
         ]).
 
 %% ------------------------------------------------------------------
@@ -47,16 +52,40 @@
 %% API Function Definitions
 %% ------------------------------------------------------------------
 
-start_link(Prefix, Application, SendInterval) ->
-    gen_server:start_link(?MODULE, [Prefix, Application, SendInterval], []).
+start_link(Config) ->
+    gen_server:start_link(?MODULE, Config, []).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 
-init([Prefix, Application, SendInterval]) ->
+init(Config) ->
+    SendInterval = proplists:get_value(send_interval, Config),
+    ResetMetrics = proplists:get_value(reset_metrics, Config),
+
+    %% This function is used in publish_to_graphite.
+    ExtractFoldFun = case ResetMetrics of
+        true ->
+            fun({Name, _} = E, A) ->
+                R = extract_value(E, A),
+                %% There is a potential race condition here.
+                %% Ideally folsom_metrics:delete_metric would
+                %% also return the values...
+                %% For now this is probably acceptable as it
+                %% is probably unlikely to encounter the race
+                %% condition.
+                folsom_metrics:delete_metric(Name),
+                R
+            end;
+        _ ->
+            fun(E, A) ->
+                extract_value(E, A)
+            end
+    end,
     State = #state{send_interval = SendInterval,
-                   prefix = prefix(Prefix, Application)
+                   prefix = make_prefix(Config),
+                   reset_metrics = ResetMetrics,
+                   extract_fold_fun = ExtractFoldFun
                    },
     timer:send_after(SendInterval, publish),
     {ok, State}.
@@ -93,9 +122,9 @@ hostname() ->
     folsom_graphite_util:sanitize(Hostname).
 
 -spec publish_to_graphite(#state{}) -> ok.
-publish_to_graphite(#state{prefix = Prefix}) ->
+publish_to_graphite(#state{prefix = Prefix, extract_fold_fun = F}) ->
     Timestamp = make_timestamp(),
-    {_, _, Lines} = lists:foldl(fun extract_value/2, {Prefix, Timestamp, []}, folsom_metrics:get_metrics_info()),
+    {_, _, Lines} = lists:foldl(F, {Prefix, Timestamp, []}, folsom_metrics:get_metrics_info()),
     folsom_graphite_sender:send(Lines),
     ok.
 
@@ -127,15 +156,18 @@ make_timestamp() ->
     {MegaSecs, Secs, _Microsecs} = os:timestamp(),
     integer_to_list(MegaSecs*1000000 + Secs).
 
--spec append_hostname(Prefix :: string()) -> string().
-append_hostname(Prefix) ->
-    string:join([Prefix, hostname()], ".").
-
--spec prefix(Prefix :: string(),
-             Application :: string() | undefined) -> string().
-prefix(Prefix, undefined) ->
-    append_hostname(folsom_graphite_util:sanitize(Prefix));
-prefix(Prefix, Application) ->
-    append_hostname(string:join([folsom_graphite_util:sanitize(Prefix),
-                                 folsom_graphite_util:sanitize(Application)],".")).
-
+-spec make_prefix(Config :: list()) -> string().
+make_prefix(Config) ->
+    TopPrefix = proplists:get_value(prefix, Config),
+    Application = proplists:get_value(application, Config),
+    AppendHostname = proplists:get_value(append_hostname, Config),
+    Parts = [folsom_graphite_util:sanitize(TopPrefix)]
+        ++ case Application of
+            undefined -> [];
+            _ -> [folsom_graphite_util:sanitize(Application)]
+        end
+        ++ case AppendHostname of
+            true -> [hostname()];
+            _ -> []
+        end,
+    string:join(Parts, ".").
