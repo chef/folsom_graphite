@@ -99,6 +99,11 @@ publish_to_graphite(#state{prefix = Prefix}) ->
     folsom_graphite_sender:send(Lines),
     ok.
 
+%% folsom has added an extra field to the second tuple returned from
+%% folsom_metrics:get_all_metrics().  We drop it out here
+extract_value({Name, [{type, Type}, _Tags]}, {Prefix, Timestamp, Acc}) ->
+    extract_value({Name, [{type, Type}]}, {Prefix, Timestamp, Acc});
+
 extract_value({Name, [{type, histogram}]}, {Prefix, Timestamp, Acc}) ->
     Values = folsom_metrics:get_histogram_statistics(Name),
     {_, _, Acc1} = extract_values(Name, Values, ?HISTOGRAM_FIELDS, {Prefix, Timestamp, Acc}),
