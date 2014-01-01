@@ -117,7 +117,9 @@ extract_value({Name, [{type, meter}]}, {Prefix, Timestamp, Acc}) ->
     extract_values(Name, Values, ?METER_FIELDS, {Prefix, Timestamp, Acc});
 extract_value({Name, [{type, counter}]}, {Prefix, Timestamp, Acc}) ->
     Value = folsom_metrics:get_metric_value(Name),
-    {Prefix, Timestamp, [folsom_graphite_util:graphite_format(Prefix, Timestamp, {io_lib:format("~s.count", [Name]), Value})|Acc]}.
+    {Prefix, Timestamp, [folsom_graphite_util:graphite_format(Prefix, Timestamp, {io_lib:format("~s.count", [Name]), Value})|Acc]};
+extract_value({_Name, [{type, _}]}, {Prefix, Timestamp, Acc}) ->
+    {Prefix, Timestamp, [Acc]}.
 
 extract_values(Name, Values, Fields, {Prefix, Timestamp, StartAcc}) ->
     {Prefix, Timestamp, lists:foldl(fun({MetricName, PrettyName}, Acc) ->
