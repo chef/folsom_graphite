@@ -129,7 +129,7 @@ extract_values(Name, Values, Fields, {Prefix, Timestamp, StartAcc}) ->
                                     StartAcc,
                                     Fields)}.
 
--spec make_timestamp() -> non_neg_integer().
+-spec make_timestamp() -> string().
 make_timestamp() ->
     {MegaSecs, Secs, _Microsecs} = os:timestamp(),
     integer_to_list(MegaSecs*1000000 + Secs).
