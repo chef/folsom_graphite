@@ -8,6 +8,10 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-ifdef(TEST).
+-compile(export_all).
+-endif.
+
 -record(state, {send_interval :: integer(),
                 prefix :: string()
                }).
