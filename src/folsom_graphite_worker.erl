@@ -91,14 +91,9 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
--spec hostname() -> string().
-hostname() ->
-    {ok, Hostname} = inet:gethostname(),
-    folsom_graphite_util:sanitize(Hostname).
-
 -spec publish_to_graphite(#state{}) -> ok.
 publish_to_graphite(#state{prefix = Prefix}) ->
-    Timestamp = make_timestamp(),
+    Timestamp = folsom_graphite_util:make_timestamp(),
     {_, _, Lines} = lists:foldl(fun extract_value/2, {Prefix, Timestamp, []}, folsom_metrics:get_metrics_info()),
     folsom_graphite_sender:send(Lines),
     ok.
@@ -133,14 +128,11 @@ extract_values(Name, Values, Fields, {Prefix, Timestamp, StartAcc}) ->
                                     StartAcc,
                                     Fields)}.
 
--spec make_timestamp() -> string().
-make_timestamp() ->
-    {MegaSecs, Secs, _Microsecs} = os:timestamp(),
-    integer_to_list(MegaSecs*1000000 + Secs).
-
 -spec append_hostname(Prefix :: string()) -> string().
+append_hostname(undefined) ->
+    folsom_graphite_util:hostname();
 append_hostname(Prefix) ->
-    string:join([Prefix, hostname()], ".").
+    string:join([Prefix, folsom_graphite_util:hostname()], ".").
 
 -spec prefix(Prefix :: string(),
              Application :: string() | undefined) -> string().
