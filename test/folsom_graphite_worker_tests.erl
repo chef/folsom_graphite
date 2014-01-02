@@ -62,7 +62,6 @@ prefix_test_() ->
     }.
 
 construct_metric_line_test_() ->
-    MockedModules = [],
     Prefix = "prefix",
     TS = "12345678",
     ExpectedFun = fun(Key, Value) ->
@@ -75,12 +74,8 @@ construct_metric_line_test_() ->
             ?assertEqual(Expected, list_to_binary(Line))
     end,
     {foreach,
-     fun() -> test_util:setup(MockedModules),
-              application:start(folsom)
-        end,
-     fun(_) -> application:stop(folsom),
-               test_util:cleanup(MockedModules)
-        end,
+     fun() -> setup([]) end,
+     fun teardown/1,
      [
         {"construct_metric_line for a Counter",
          fun() -> Expected = ExpectedFun("count1.count", 1),
@@ -93,4 +88,65 @@ construct_metric_line_test_() ->
                 end
         }
     ]}.
+
+construct_all_lines_test_() ->
+    Prefix = "prefix",
+    TS = "12345678",
+    ExpectedFun = fun(Key, Value) ->
+            list_to_binary(io_lib:format("~s.~s ~w ~s~n", [Prefix, Key, Value, TS]))
+    end,
+    TestLinesFun = fun(Metrics, ExpectedLines) ->
+            NewLine = <<"\n">>,
+            [ folsom_metrics:notify(Name, Value, Type) || {Name, Value, Type} <- Metrics],
+            Lines = folsom_graphite_worker:construct_all_lines(Prefix, TS),
+            SplitLines = binary:split(list_to_binary(Lines), NewLine, [global, trim]),
+            [?assertEqual(Expected, <<Line/binary,NewLine/binary>>) ||
+                {Line, Expected} <- lists:zip(SplitLines, ExpectedLines)]
+    end,
+    {foreach,
+     fun() -> setup([]) end,
+     fun teardown/1,
+     [
+        {"construct_all_lines works for one metric",
+         fun() -> Expected = [ ExpectedFun("gauge1.value", 1)],
+                  TestLinesFun([{"gauge1", 1, gauge}], Expected)
+                end
+        },
+        {"construct_all_lines works for more than 1 metric",
+         fun() -> Metrics = [{"gauge1", 1, gauge},
+                             {"gauge33", 123, gauge},
+                             {"my_counter1", {dec, 2}, counter}],
+                  Expected = [ExpectedFun("gauge1.value", 1),
+                              ExpectedFun("gauge33.value", 123),
+                              ExpectedFun("my_counter1.count", -2)],
+                  TestLinesFun(Metrics, Expected)
+                end
+        },
+        {"Can run construct_all_lines for complex metrics",
+         %% Hard to test this since we can't work out the values so well -
+         %% Let's just make sure we can run construct_all_metrics where
+         %% we've got complex metrics
+         fun() -> Metrics = [{"gauge1", 1, gauge},
+                             {"gauge33", 123, gauge},
+                             {"my_counter1", {dec, 2}, counter},
+                             {"histo1", 1, histogram},
+                             {"meter1", 1, meter}],
+                  [folsom_metrics:notify(Name, Value, Type) || {Name, Value, Type} <- Metrics],
+                  Lines = folsom_graphite_worker:construct_all_lines(Prefix, TS),
+                  ?assertNot([] =:= Lines)
+                end
+        }
+    ]}.
+
+%%
+%% Internal functions
+%%
+setup(Modules) ->
+    test_util:setup(Modules),
+    application:start(folsom),
+    Modules.
+
+teardown(Modules) ->
+    application:stop(folsom),
+    test_util:cleanup(Modules).
 
