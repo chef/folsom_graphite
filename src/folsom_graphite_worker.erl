@@ -106,7 +106,7 @@ construct_all_lines(Prefix, Timestamp) ->
     [construct_metric_line(MetricInfo, Prefix, Timestamp) || MetricInfo <- folsom_metrics:get_metrics_info()].
 
 %% Construct the graphite lines for a single metric.  In the case of
-%% more complex metric types (historgram, meter) this could return
+%% more complex metric types (histogram, meter) this could return
 %% multiple lines of output
 %%
 %% NOTE: folsom has added an extra field to the second tuple returned from
@@ -121,6 +121,11 @@ construct_metric_line({Name, [{type, counter}]}, Prefix, Timestamp) ->
 construct_metric_line({Name, [{type, gauge}]}, Prefix, Timestamp) ->
     Value = folsom_metrics:get_metric_value(Name),
     folsom_graphite_util:graphite_format(Prefix, Timestamp, {io_lib:format("~s.value", [Name]), Value});
+construct_metric_line({Name, [{type, duration}]}, Prefix, Timestamp) ->
+    Values = folsom_metrics:get_metric_value(Name),
+    HistogramFields = construct_additional(Name, Values, ?HISTOGRAM_FIELDS, Prefix, Timestamp),
+    Percentiles = proplists:get_value(percentile, Values),
+    [HistogramFields | construct_additional(Name, Percentiles, ?PERCENTILE_FIELDS, Prefix, Timestamp)];
 construct_metric_line({Name, [{type, histogram}]}, Prefix, Timestamp) ->
     Values = folsom_metrics:get_histogram_statistics(Name),
     HistogramFields = construct_additional(Name, Values, ?HISTOGRAM_FIELDS, Prefix, Timestamp),

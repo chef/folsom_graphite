@@ -86,7 +86,13 @@ construct_metric_line_test_() ->
          fun() -> Expected = ExpectedFun("gauge1.value", 1),
                   TestLineFun("gauge1", 1, gauge, Expected)
                 end
+        },
+        {"construct_metric_line does not error on History",
+         fun() -> Expected = <<>>,
+                  TestLineFun("histo", "something happened", history, Expected)
+                end
         }
+
     ]}.
 
 construct_all_lines_test_() ->
@@ -130,6 +136,8 @@ construct_all_lines_test_() ->
                              {"gauge33", 123, gauge},
                              {"my_counter1", {dec, 2}, counter},
                              {"histo1", 1, histogram},
+                             {"dur1", timer_start, duration},
+                             {"dur1", timer_end, duration},
                              {"meter1", 1, meter}],
                   [folsom_metrics:notify(Name, Value, Type) || {Name, Value, Type} <- Metrics],
                   Lines = folsom_graphite_worker:construct_all_lines(Prefix, TS),
