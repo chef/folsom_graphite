@@ -103,7 +103,7 @@ publish_to_graphite(#state{prefix = Prefix}) ->
 -spec construct_all_lines(Prefix :: string(),
                           Timestamp :: string()) -> iolist().
 construct_all_lines(Prefix, Timestamp) ->
-    [extract_value(MetricInfo, Prefix, Timestamp) || MetricInfo <- folsom_metrics:get_metrics_info()].
+    [construct_metric_line(MetricInfo, Prefix, Timestamp) || MetricInfo <- folsom_metrics:get_metrics_info()].
 
 %% Construct the graphite lines for a single metric.  In the case of
 %% more complex metric types (historgram, meter) this could return
@@ -112,27 +112,29 @@ construct_all_lines(Prefix, Timestamp) ->
 %% NOTE: folsom has added an extra field to the second tuple returned from
 %% folsom_metrics:get_all_metrics() containing tags.  We drop it out here
 %% so we can support folsom before or after this API change
-extract_value({Name, [{type, Type}, _Tags]}, Prefix, Timestamp) ->
-    extract_value({Name, [{type, Type}]}, Prefix, Timestamp);
+construct_metric_line({Name, [{type, Type}, _Tags]}, Prefix, Timestamp) ->
+    construct_metric_line({Name, [{type, Type}]}, Prefix, Timestamp);
 
-extract_value({Name, [{type, counter}]}, Prefix, Timestamp) ->
+construct_metric_line({Name, [{type, counter}]}, Prefix, Timestamp) ->
     Value = folsom_metrics:get_metric_value(Name),
     folsom_graphite_util:graphite_format(Prefix, Timestamp, {io_lib:format("~s.count", [Name]), Value});
-extract_value({Name, [{type, gauge}]}, Prefix, Timestamp) ->
+construct_metric_line({Name, [{type, gauge}]}, Prefix, Timestamp) ->
     Value = folsom_metrics:get_metric_value(Name),
     folsom_graphite_util:graphite_format(Prefix, Timestamp, {io_lib:format("~s.value", [Name]), Value});
-extract_value({Name, [{type, histogram}]}, Prefix, Timestamp) ->
+construct_metric_line({Name, [{type, histogram}]}, Prefix, Timestamp) ->
     Values = folsom_metrics:get_histogram_statistics(Name),
-    HistogramFields = extract_values(Name, Values, ?HISTOGRAM_FIELDS, Prefix, Timestamp),
+    HistogramFields = construct_additional(Name, Values, ?HISTOGRAM_FIELDS, Prefix, Timestamp),
     Percentiles = proplists:get_value(percentile, Values),
-    [HistogramFields | extract_values(Name, Percentiles, ?PERCENTILE_FIELDS, Prefix, Timestamp)];
-extract_value({Name, [{type, meter}]}, Prefix, Timestamp) ->
+    [HistogramFields | construct_additional(Name, Percentiles, ?PERCENTILE_FIELDS, Prefix, Timestamp)];
+construct_metric_line({Name, [{type, meter}]}, Prefix, Timestamp) ->
     Values = folsom_metrics:get_metric_value(Name),
-    extract_values(Name, Values, ?METER_FIELDS, Prefix, Timestamp);
-extract_value({_Name, [{type, _}]}, _Prefix, _Timestamp) ->
+    construct_additional(Name, Values, ?METER_FIELDS, Prefix, Timestamp);
+construct_metric_line({_Name, [{type, _}]}, _Prefix, _Timestamp) ->
     [].
 
-extract_values(Name, Values, Fields, Prefix, Timestamp) ->
+%% Construct the graphite formatted lines for a set of fields attached to a complex metric
+%% such as histogram or meter
+construct_additional(Name, Values, Fields, Prefix, Timestamp) ->
     [ begin
             V = proplists:get_value(MetricName, Values),
             folsom_graphite_util:graphite_format(Prefix, Timestamp, {io_lib:format("~s.~s",[Name, PrettyName]), V})

@@ -61,7 +61,7 @@ prefix_test_() ->
      ]
     }.
 
-extract_value_test_() ->
+construct_metric_line_test_() ->
     MockedModules = [],
     Prefix = "prefix",
     TS = "12345678",
@@ -71,7 +71,7 @@ extract_value_test_() ->
     TestLineFun = fun(Name, Value, Type, Expected) ->
             folsom_metrics:notify(Name, Value, Type),
             [M] = folsom_metrics:get_metric_info(Name),
-            Line = folsom_graphite_worker:extract_value(M, Prefix, TS),
+            Line = folsom_graphite_worker:construct_metric_line(M, Prefix, TS),
             ?assertEqual(Expected, list_to_binary(Line))
     end,
     {foreach,
@@ -82,12 +82,12 @@ extract_value_test_() ->
                test_util:cleanup(MockedModules)
         end,
      [
-        {"extract_value for a Counter",
+        {"construct_metric_line for a Counter",
          fun() -> Expected = ExpectedFun("count1.count", 1),
                   TestLineFun("count1", {inc, 1}, counter, Expected)
                 end
         },
-        {"extract_value for a Gauge",
+        {"construct_metric_line for a Gauge",
          fun() -> Expected = ExpectedFun("gauge1.value", 1),
                   TestLineFun("gauge1", 1, gauge, Expected)
                 end
