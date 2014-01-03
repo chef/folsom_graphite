@@ -8,6 +8,10 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-ifdef(TEST).
+-compile(export_all).
+-endif.
+
 -record(state, {send_interval :: integer(),
                 prefix :: string()
                }).
@@ -87,56 +91,65 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
 
--spec hostname() -> string().
-hostname() ->
-    {ok, Hostname} = inet:gethostname(),
-    folsom_graphite_util:sanitize(Hostname).
-
 -spec publish_to_graphite(#state{}) -> ok.
 publish_to_graphite(#state{prefix = Prefix}) ->
-    Timestamp = make_timestamp(),
-    {_, _, Lines} = lists:foldl(fun extract_value/2, {Prefix, Timestamp, []}, folsom_metrics:get_metrics_info()),
-    folsom_graphite_sender:send(Lines),
-    ok.
+    Timestamp = folsom_graphite_util:make_timestamp(),
+    Lines = construct_all_lines(Prefix, Timestamp),
 
-%% folsom has added an extra field to the second tuple returned from
-%% folsom_metrics:get_all_metrics().  We drop it out here
-extract_value({Name, [{type, Type}, _Tags]}, {Prefix, Timestamp, Acc}) ->
-    extract_value({Name, [{type, Type}]}, {Prefix, Timestamp, Acc});
+    folsom_graphite_sender:send(Lines).
 
-extract_value({Name, [{type, histogram}]}, {Prefix, Timestamp, Acc}) ->
-    Values = folsom_metrics:get_histogram_statistics(Name),
-    {_, _, Acc1} = extract_values(Name, Values, ?HISTOGRAM_FIELDS, {Prefix, Timestamp, Acc}),
-    Percentiles = proplists:get_value(percentile, Values),
-    extract_values(Name, Percentiles, ?PERCENTILE_FIELDS, {Prefix, Timestamp, Acc1});
-extract_value({Name, [{type, gauge}]}, {Prefix, Timestamp, Acc}) ->
+%% construct the set of graphite lines for all metrics
+%% in folsom
+-spec construct_all_lines(Prefix :: string(),
+                          Timestamp :: string()) -> iolist().
+construct_all_lines(Prefix, Timestamp) ->
+    [construct_metric_line(MetricInfo, Prefix, Timestamp) || MetricInfo <- folsom_metrics:get_metrics_info()].
+
+%% Construct the graphite lines for a single metric.  In the case of
+%% more complex metric types (histogram, meter) this could return
+%% multiple lines of output
+%%
+%% NOTE: folsom has added an extra field to the second tuple returned from
+%% folsom_metrics:get_all_metrics() containing tags.  We drop it out here
+%% so we can support folsom before or after this API change
+construct_metric_line({Name, [{type, Type}, _Tags]}, Prefix, Timestamp) ->
+    construct_metric_line({Name, [{type, Type}]}, Prefix, Timestamp);
+
+construct_metric_line({Name, [{type, counter}]}, Prefix, Timestamp) ->
     Value = folsom_metrics:get_metric_value(Name),
-    {Prefix, Timestamp, [folsom_graphite_util:graphite_format(Prefix, Timestamp, {io_lib:format("~s.value", [Name]), Value})|Acc]};
-extract_value({Name, [{type, meter}]}, {Prefix, Timestamp, Acc}) ->
+    folsom_graphite_util:graphite_format(Prefix, Timestamp, {io_lib:format("~s.count", [Name]), Value});
+construct_metric_line({Name, [{type, gauge}]}, Prefix, Timestamp) ->
+    Value = folsom_metrics:get_metric_value(Name),
+    folsom_graphite_util:graphite_format(Prefix, Timestamp, {io_lib:format("~s.value", [Name]), Value});
+construct_metric_line({Name, [{type, duration}]}, Prefix, Timestamp) ->
     Values = folsom_metrics:get_metric_value(Name),
-    extract_values(Name, Values, ?METER_FIELDS, {Prefix, Timestamp, Acc});
-extract_value({Name, [{type, counter}]}, {Prefix, Timestamp, Acc}) ->
-    Value = folsom_metrics:get_metric_value(Name),
-    {Prefix, Timestamp, [folsom_graphite_util:graphite_format(Prefix, Timestamp, {io_lib:format("~s.count", [Name]), Value})|Acc]};
-extract_value({_Name, [{type, _}]}, {Prefix, Timestamp, Acc}) ->
-    {Prefix, Timestamp, [Acc]}.
+    HistogramFields = construct_additional(Name, Values, ?HISTOGRAM_FIELDS, Prefix, Timestamp),
+    Percentiles = proplists:get_value(percentile, Values),
+    [HistogramFields | construct_additional(Name, Percentiles, ?PERCENTILE_FIELDS, Prefix, Timestamp)];
+construct_metric_line({Name, [{type, histogram}]}, Prefix, Timestamp) ->
+    Values = folsom_metrics:get_histogram_statistics(Name),
+    HistogramFields = construct_additional(Name, Values, ?HISTOGRAM_FIELDS, Prefix, Timestamp),
+    Percentiles = proplists:get_value(percentile, Values),
+    [HistogramFields | construct_additional(Name, Percentiles, ?PERCENTILE_FIELDS, Prefix, Timestamp)];
+construct_metric_line({Name, [{type, meter}]}, Prefix, Timestamp) ->
+    Values = folsom_metrics:get_metric_value(Name),
+    construct_additional(Name, Values, ?METER_FIELDS, Prefix, Timestamp);
+construct_metric_line({_Name, [{type, _}]}, _Prefix, _Timestamp) ->
+    [].
 
-extract_values(Name, Values, Fields, {Prefix, Timestamp, StartAcc}) ->
-    {Prefix, Timestamp, lists:foldl(fun({MetricName, PrettyName}, Acc) ->
-                                            V = proplists:get_value(MetricName, Values),
-                                            [folsom_graphite_util:graphite_format(Prefix, Timestamp, {io_lib:format("~s.~s",[Name, PrettyName]), V})| Acc]
-                                    end,
-                                    StartAcc,
-                                    Fields)}.
-
--spec make_timestamp() -> non_neg_integer().
-make_timestamp() ->
-    {MegaSecs, Secs, _Microsecs} = os:timestamp(),
-    integer_to_list(MegaSecs*1000000 + Secs).
+%% Construct the graphite formatted lines for a set of fields attached to a complex metric
+%% such as histogram or meter
+construct_additional(Name, Values, Fields, Prefix, Timestamp) ->
+    [ begin
+            V = proplists:get_value(MetricName, Values),
+            folsom_graphite_util:graphite_format(Prefix, Timestamp, {io_lib:format("~s.~s",[Name, PrettyName]), V})
+      end || {MetricName, PrettyName} <- Fields].
 
 -spec append_hostname(Prefix :: string()) -> string().
+append_hostname(undefined) ->
+    folsom_graphite_util:hostname();
 append_hostname(Prefix) ->
-    string:join([Prefix, hostname()], ".").
+    string:join([Prefix, folsom_graphite_util:hostname()], ".").
 
 -spec prefix(Prefix :: string(),
              Application :: string() | undefined) -> string().

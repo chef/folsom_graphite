@@ -9,12 +9,14 @@
 
 -export([sanitize/1,
          remove_spaces/1,
+         hostname/0,
+         make_timestamp/0,
          graphite_format/3,
          to_list/1
         ]).
 
 %% the various types from folsom key/values
--type folsom_type() :: atom() | list() | binary() | integer() | float().
+-type folsom_type() :: atom() | string() | binary() | number().
 
 -ifdef(TEST).
 -compile([export_all]).
@@ -23,6 +25,8 @@
 -spec sanitize(Str :: string() | binary()) -> string().
 %% @doc Cleanup aribitrary strings for use in
 %% graphite metrics names - no "."
+sanitize(undefined) ->
+    undefined;
 sanitize(Str) ->
     do_substitution(Str, ".", "_").
 
@@ -36,19 +40,26 @@ do_substitution(Str, From, To) when is_binary(Str) ->
 do_substitution(Str, From, To) ->
     string:join(string:tokens(Str, From), To).
 
+-spec hostname() -> string().
+hostname() ->
+    {ok, Hostname} = inet:gethostname(),
+    sanitize(Hostname).
+
+-spec make_timestamp() -> string().
+make_timestamp() ->
+    {MegaSecs, Secs, _Microsecs} = os:timestamp(),
+    integer_to_list(MegaSecs*1000000 + Secs).
 
 -spec graphite_format(Prefix :: string(),
-                      Timestamp :: non_neg_integer(),
-                      {Key :: folsom_type(), Value :: folsom_type()}) -> list().
+                      Timestamp :: string(),
+                      {Key :: folsom_type(), Value :: folsom_type()}) -> iolist().
 %% Convert a metric into a line suitable for graphite.
 %%
 %% We use the mappings defined in codahales metrics GraphiteReporter
 %% (http://bit.ly/UFprFV)
 %%
 %% Returns an iolist
-graphite_format(Prefix, Timestamp, {Key, Value}) when is_number(Timestamp) ->
-    graphite_format(Prefix, {Key, Value}, integer_to_list(Timestamp));
-graphite_format(Prefix, Timestamp, {Key, Value}) when is_list(Timestamp) ->
+graphite_format(Prefix, Timestamp, {Key, Value}) ->
     MetricName = string:join([Prefix, to_list(Key)], "."),
     concat([remove_spaces(MetricName),
             to_list(Value),
@@ -75,7 +86,8 @@ to_list(V) when is_atom(V) ->
 to_list(V) when is_binary(V) ->
     binary_to_list(V);
 to_list(V) when is_float(V) ->
-    io_lib:format("~w", [V]);
+    [Result] = io_lib:format("~w", [V]),
+    Result;
 to_list(V) when is_integer(V) ->
     integer_to_list(V).
 

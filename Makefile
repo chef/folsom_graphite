@@ -1,5 +1,5 @@
 DEPS=$(CURDIR)/deps
-DIALYZER_DEPS= deps/folsom/ebin
+DIALYZER_DEPS= deps/folsom/ebin deps/lager/ebin
 DEPS_PLT = folsom_graphite.plt
 
 all: compile eunit dialyzer
