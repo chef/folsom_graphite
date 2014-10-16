@@ -20,6 +20,8 @@
 -define(SUP(I, Args), {I, {I, start_link, Args}, permanent, infinity, supervisor, [I]}).
 -define(WORKER(I, Args), {I, {I, start_link, Args}, permanent, 5000, worker, [I]}).
 -define(WORKERNL(I, Args), {I, {I, start, Args}, permanent, 5000, worker, [I]}).
+-define(MAX_RESTARTS, 10).
+-define(MAX_RESTART_WINDOW, 3600).
 %% ===================================================================
 %% API functions
 %% ===================================================================
@@ -32,16 +34,8 @@ start_link() ->
 %% ===================================================================
 
 init([]) ->
-    GraphiteHost = get_env(graphite_host, "localhost"),
-    GraphitePort = get_env(graphite_port, 2003),
-    Prefix = get_env(prefix, "folsom"),
-    Application = get_env(application, undefined),
-    SendInterval = get_env(send_interval, 10000),
-    lager:debug("Prefix ~w", [Prefix]),
-    {ok, {{one_for_one, 10, 3600},
-          [?WORKER(folsom_graphite_sender, [GraphiteHost, GraphitePort]),
-           ?WORKER(folsom_graphite_worker, [Prefix, Application, SendInterval])]
-         }}.
+    {ok, {{one_for_one, ?MAX_RESTARTS, ?MAX_RESTART_WINDOW},
+          maybe_start_sender_worker(application:get_env(folsom_graphite))}}.
 
 get_env(Key, Default) ->
     case application:get_env(folsom_graphite, Key) of
@@ -50,3 +44,16 @@ get_env(Key, Default) ->
         undefined ->
             Default
     end.
+
+maybe_start_sender_worker(undefined) ->
+    lager:debug("No config found, not starting sender or worker"),
+    [];
+maybe_start_sender_worker(_) ->
+    GraphiteHost = get_env(graphite_host, "localhost"),
+    GraphitePort = get_env(graphite_port, 2003),
+    Prefix = get_env(prefix, "folsom"),
+    Application = get_env(application, undefined),
+    SendInterval = get_env(send_interval, 10000),
+    lager:debug("Prefix ~w", [Prefix]),
+    [?WORKER(folsom_graphite_sender, [GraphiteHost, GraphitePort]),
+     ?WORKER(folsom_graphite_worker, [Prefix, Application, SendInterval])].
