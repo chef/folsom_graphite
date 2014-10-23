@@ -35,7 +35,7 @@ start_link() ->
 
 init([]) ->
     {ok, {{one_for_one, ?MAX_RESTARTS, ?MAX_RESTART_WINDOW},
-          maybe_start_sender_worker(application:get_env(folsom_graphite))}}.
+          maybe_start_sender_worker(application:get_all_env(folsom_graphite))}}.
 
 get_env(Key, Default) ->
     case application:get_env(folsom_graphite, Key) of
@@ -45,7 +45,7 @@ get_env(Key, Default) ->
             Default
     end.
 
-maybe_start_sender_worker(undefined) ->
+maybe_start_sender_worker([]) ->
     lager:debug("No config found, not starting sender or worker"),
     [];
 maybe_start_sender_worker(_) ->
