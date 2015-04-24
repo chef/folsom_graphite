@@ -25,7 +25,7 @@ start_application_config_test() ->
         FakePid = spawn(fun() -> receive _ -> ok end end),
         application:set_env(folsom_graphite, foo, bar),
         meck:new([folsom_graphite_sender, folsom_graphite_worker]),
-        meck:expect(folsom_graphite_sender, start_link, 2, {ok, FakePid}),
+        meck:expect(folsom_graphite_sender, start_link, 3, {ok, FakePid}),
         meck:expect(folsom_graphite_worker, start_link, 3, {ok, FakePid}),
         application:start(folsom),
         ?assertMatch(ok, application:start(folsom_graphite)),

@@ -60,7 +60,8 @@ maybe_start_sender_worker(_Message) ->
     GraphitePort = get_env(graphite_port, 2003),
     Prefix = get_env(prefix, "folsom"),
     Application = get_env(application, undefined),
+    RetryInterval = get_env(retry_interval, 0),
     SendInterval = get_env(send_interval, 10000),
     lager:debug("Prefix ~w", [Prefix]),
-    [?WORKER(folsom_graphite_sender, [GraphiteHost, GraphitePort]),
+    [?WORKER(folsom_graphite_sender, [GraphiteHost, GraphitePort, RetryInterval]),
      ?WORKER(folsom_graphite_worker, [Prefix, Application, SendInterval])].

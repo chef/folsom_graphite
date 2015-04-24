@@ -62,7 +62,7 @@ init([Prefix, Application, SendInterval]) ->
     State = #state{send_interval = SendInterval,
                    prefix = prefix(Prefix, Application)
                    },
-    timer:send_after(SendInterval, publish),
+    erlang:send_after(SendInterval, self(), publish),
     {ok, State}.
 
 handle_call(Request, _From, State) ->
@@ -75,7 +75,7 @@ handle_cast(Msg, State) ->
 
 handle_info(publish, #state{send_interval = SendInterval} = State) ->
     ok = publish_to_graphite(State),
-    timer:send_after(SendInterval, publish),
+    erlang:send_after(SendInterval, self(), publish),
     {noreply, State};
 handle_info(Info, State) ->
     lager:info("Unepected message: handle_info ~p", [Info]),
