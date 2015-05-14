@@ -23,7 +23,7 @@
 -define(WORKER(I, Args), {I, {I, start_link, Args}, permanent, 5000, worker, [I]}).
 -define(WORKERNL(I, Args), {I, {I, start, Args}, permanent, 5000, worker, [I]}).
 -define(MAX_RESTARTS, 10).
--define(MAX_RESTART_WINDOW, 3600).
+-define(MAX_RESTART_WINDOW, 10).
 %% ===================================================================
 %% API functions
 %% ===================================================================
