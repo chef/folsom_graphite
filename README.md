@@ -1,14 +1,26 @@
-folsom_graphite
-===============
+# folsom_graphite
 
 Send data from folsom automatically to graphite
 
-## LICENSE:
+## Contributing
 
-Copyright 2011-2014 Opscode, Inc. All Rights Reserved.
+For information on contributing to this project see <https://github.com/chef/chef/blob/master/CONTRIBUTING.md>
 
-Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License.  You may obtain a copy of the License at
+## License
 
-  http://www.apache.org/licenses/LICENSE-2.0
+- Copyright:: 2011-2016 Chef Software, Inc.
+- License:: Apache License, Version 2.0
 
-  Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the License for the specific language governing permissions and limitations under the License.
+```text
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+```
