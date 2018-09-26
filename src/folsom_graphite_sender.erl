@@ -9,8 +9,10 @@
 
 -define(CONNECT_TIMEOUT, 2000).
 
--record(state, {socket :: inet:socket(),
-                host, port, retry_interval}).
+-record(state, {socket :: undefined | inet:socket(),
+                host :: any(),
+                port :: integer(),
+                retry_interval :: integer()}).
 %% ------------------------------------------------------------------
 %% API Function Exports
 %% ------------------------------------------------------------------
@@ -33,7 +35,7 @@
 %% ------------------------------------------------------------------
 %% API Function Definitions
 %% ------------------------------------------------------------------
-
+-spec start_link(any(), integer() , integer()) -> 'ignore' | {'error',any()} | {'ok',pid()}.
 start_link(GraphiteHost, GraphitePort, RetryInterval) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [GraphiteHost, GraphitePort, RetryInterval], []).
 
@@ -45,7 +47,8 @@ send(Message) ->
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
-
+%% Init should be [any(), integer(), integer()]
+-spec init([any()]) -> {'ok',#state{}} | {'stop',{'error','failed_connect'}}.
 init([GraphiteHost, GraphitePort, RetryInterval]) ->
     State = #state{host = GraphiteHost, port = GraphitePort, retry_interval = RetryInterval},
     case connect(State) of
@@ -56,6 +59,7 @@ init([GraphiteHost, GraphitePort, RetryInterval]) ->
             {ok, State2}
     end.
 
+-spec handle_call(any(), any(), #state{}) -> {reply, ok, #state{}} | {noreply, #state{}} | {'stop',{'shutdown','send_error'},#state{}}.
 handle_call({send, _Message}, _From, #state{socket = undefined} = State) ->
     {reply, ok, State};
 handle_call({send, Message}, _From, #state{socket = Socket} = State) ->
@@ -75,18 +79,21 @@ handle_call({send, Message}, _From, #state{socket = Socket} = State) ->
     end;
 handle_call(Request, _From, State) ->
     lager:info("Unexpected message: handle_call ~p", [Request]),
-    {noreply, ok, State}.
+    {noreply, State}.
 
+-spec handle_cast(_,#state{}) -> {'noreply',#state{}}.
 handle_cast(Msg, State) ->
     lager:info("Unexpected message: handle_cast ~p", [Msg]),
     {noreply, State}.
 
+-spec handle_info(_,#state{}) -> {'noreply',#state{}}.
 handle_info(reconnect, #state{socket = undefined} = State) ->
     {noreply, connect(State)};
 handle_info(Info, State) ->
     lager:info("Unexpected message: handle_info ~p", [Info]),
     {noreply, State}.
 
+-spec terminate(_,#state{}) -> ok.
 terminate(_Reason, #state{socket = Socket}) ->
     case Socket of
         undefined ->
@@ -95,6 +102,7 @@ terminate(_Reason, #state{socket = Socket}) ->
             gen_tcp:close(Socket)
     end.
 
+-spec code_change(_,#state{},_) -> {'ok',#state{}}.
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
@@ -120,4 +128,3 @@ error_reply(#state{retry_interval = 0} = State) ->
 error_reply(#state{retry_interval = Interval} = State) ->
     erlang:send_after(Interval, self(), reconnect),
     {reply, ok, State#state{socket = undefined}}.
-
